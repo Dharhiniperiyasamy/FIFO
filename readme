@@ -1,1 +1,193 @@
-readme
+# Synchronous FIFO Design & Verification (Verilog)
+
+
+
+A parameterized synchronous FIFO designed in Verilog, verified using a self-checking testbench with a reference-model scoreboard, boundary condition testing, and fault injection — built and simulated in Xilinx Vivado (XSIM).
+
+
+
+## Overview
+
+
+
+A FIFO (First-In-First-Out) is a hardware queue — data written in comes out in the same order, commonly used as a buffer between two parts of a digital system running at different speeds or timing.
+
+
+
+This project focuses equally on design and verification: rather than just building a FIFO and assuming it works, the goal was to build a testbench that automatically proves it works — and to prove that the testbench itself is trustworthy.
+
+
+
+## Design Details
+
+
+
+- Type: Synchronous FIFO (single clock domain)
+
+
+
+- Depth: 8 entries (parameterized)
+
+
+
+- Data width: 8 bits (parameterized)
+
+
+
+- Flags: full, empty, almost_full, almost_empty
+
+
+
+- Key design technique: Uses an extra MSB bit on the read/write pointers to correctly distinguish "completely full" from "completely empty" — both cases would otherwise look identical when pointers wrap around.
+
+
+
+- Illegal operations (write while full, read while empty) are safely ignored rather than corrupting data.
+
+
+
+## Verification Approach
+
+
+
+- Self-checking scoreboard: A simple reference-model queue tracks expected values; every read from the DUT is automatically compared against it (no manual waveform inspection needed).
+
+
+
+- Directed tests: Basic write/read sequence, verifying correct FIFO ordering.
+
+
+
+- Boundary tests: Filling the FIFO completely (checking full asserts correctly), draining it completely (checking empty asserts correctly), and verifying illegal writes/reads are correctly rejected.
+
+
+
+- Fault injection: Deliberately introduced a bug into the full flag logic (removed the pointer "lap bit" check) to confirm the testbench actually detects real failures, not just passing by default.
+
+
+
+## Bug Story: Fault Injection Results
+
+
+
+To validate that the testbench genuinely catches errors, the full flag logic was intentionally broken:
+
+
+
+assign full = (wr_addr == rd_addr);
+
+
+
+Result: This caused full to incorrectly assert immediately after reset (since wr_ptr == rd_ptr == 0), which silently blocked every write from the very first cycle. The testbench caught this immediately — not through a full flag mismatch, but through cascading data mismatches (every read returned 00 instead of expected values), since no data was ever actually stored.
+
+
+
+PASS = 5 FAIL = 11
+
+
+
+After reverting the fix:
+
+
+
+PASS = 16 FAIL = 0
+
+
+
+This confirmed the testbench reliably detects real design faults, including subtle ones where the symptom (data mismatch) appears in a different check than the root cause (flag logic).
+
+
+
+## How to Run
+
+
+
+1. Open Vivado, create a new project
+
+
+
+2. Add sync_fifo.v as a Design Source
+
+
+
+3. Add fifo_tb.v as a Simulation Source
+
+
+
+4. Run Behavioral Simulation
+
+
+
+5. View results in the Tcl Console (PASS/FAIL summary) and waveform viewer
+
+
+
+## Results Summary
+
+
+
+| Test Category | Result |
+
+
+
+|---|---|
+
+
+
+| Basic write/read order | Pass |
+
+
+
+| Full flag boundary | Pass |
+
+
+
+| Empty flag boundary | Pass |
+
+
+
+| Illegal write (while full) | Pass |
+
+
+
+| Illegal read (while empty) | Pass |
+
+
+
+| Fault injection detection | Confirmed |
+
+
+
+| Total | 16/16 PASS |
+
+
+
+## Future Improvements
+
+
+
+- Constrained-random stimulus testing
+
+
+
+- Functional coverage tracking
+
+
+
+- SystemVerilog/UVM-based testbench version
+
+
+
+- Asynchronous (dual-clock) FIFO variant
+
+
+
+## Tools Used
+
+
+
+- Xilinx Vivado 2024.1 (XSIM simulator)
+
+
+
+- Verilog HDL
