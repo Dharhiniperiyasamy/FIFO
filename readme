@@ -1,193 +1,356 @@
 # Synchronous FIFO Design & Verification (Verilog)
 
+A parameterized **Synchronous FIFO (First-In-First-Out)** designed in Verilog and verified using a **self-checking testbench**, **reference-model scoreboard**, **boundary-condition testing**, and **fault injection methodology**. The project was developed and simulated using **Xilinx Vivado 2024.1 (XSIM)**.
 
+---
 
-A parameterized synchronous FIFO designed in Verilog, verified using a self-checking testbench with a reference-model scoreboard, boundary condition testing, and fault injection — built and simulated in Xilinx Vivado (XSIM).
+## Project Highlights
 
+* Parameterized FIFO architecture (configurable depth and data width)
+* Single-clock (synchronous) FIFO implementation
+* Full, Empty, Almost Full, and Almost Empty status flags
+* Self-checking verification environment
+* Reference-model scoreboard for automatic result checking
+* Boundary-condition and negative testing
+* Fault injection to validate testbench effectiveness
+* 100% test pass rate after design correction
 
+---
 
-## Overview
+## Project Objective
 
+FIFO memories are widely used as temporary buffers between hardware blocks operating at different processing rates. While designing a FIFO is important, verifying that it behaves correctly under all operating conditions is equally critical.
 
+This project focuses on both:
 
-A FIFO (First-In-First-Out) is a hardware queue — data written in comes out in the same order, commonly used as a buffer between two parts of a digital system running at different speeds or timing.
+1. **RTL Design** – Creating a reliable FIFO architecture.
+2. **Functional Verification** – Building a verification environment capable of automatically detecting design failures without relying on manual waveform inspection.
 
+---
 
+## FIFO Architecture
 
-This project focuses equally on design and verification: rather than just building a FIFO and assuming it works, the goal was to build a testbench that automatically proves it works — and to prove that the testbench itself is trustworthy.
+### Features
 
+| Parameter    | Value                                  |
+| ------------ | -------------------------------------- |
+| Data Width   | 8-bit (Parameterizable)                |
+| FIFO Depth   | 8 Entries (Parameterizable)            |
+| Clock Domain | Single Clock                           |
+| Reset Type   | Synchronous Reset                      |
+| Flags        | Full, Empty, Almost Full, Almost Empty |
 
+### Internal Design
 
-## Design Details
+The FIFO uses:
 
+* Memory array for data storage
+* Read pointer
+* Write pointer
+* Occupancy tracking logic
+* Status flag generation
 
+To correctly distinguish between **Full** and **Empty** states after pointer wrap-around, the design uses an additional **Most Significant Bit (MSB)** in both read and write pointers.
 
-- Type: Synchronous FIFO (single clock domain)
+#### Empty Condition
 
+```verilog
+wr_ptr == rd_ptr
+```
 
+#### Full Condition
 
-- Depth: 8 entries (parameterized)
+```verilog
+(wr_addr == rd_addr) &&
+(wr_ptr[PTR_W] != rd_ptr[PTR_W])
+```
 
+This technique prevents ambiguity when pointers wrap around the FIFO memory.
 
+---
 
-- Data width: 8 bits (parameterized)
+## Verification Methodology
 
+### Self-Checking Testbench
 
+The verification environment automatically validates DUT behavior without manual checking.
 
-- Flags: full, empty, almost_full, almost_empty
+Features include:
 
+* Automated pass/fail reporting
+* Scoreboard-based comparison
+* Error counting
+* Boundary-condition verification
+* Negative testing
 
+---
 
-- Key design technique: Uses an extra MSB bit on the read/write pointers to correctly distinguish "completely full" from "completely empty" — both cases would otherwise look identical when pointers wrap around.
+### Reference Model Scoreboard
 
+A behavioral queue acts as the golden reference model.
 
+Workflow:
 
-- Illegal operations (write while full, read while empty) are safely ignored rather than corrupting data.
+1. Every successful write is pushed into the reference queue.
+2. Every FIFO read pops the expected value.
+3. DUT output is automatically compared against the expected value.
+4. Any mismatch generates a test failure.
 
+This ensures data integrity and correct FIFO ordering.
 
+---
 
-## Verification Approach
+## Test Scenarios
 
+### 1. Basic Write/Read Verification
 
+Objective:
 
-- Self-checking scoreboard: A simple reference-model queue tracks expected values; every read from the DUT is automatically compared against it (no manual waveform inspection needed).
+* Verify FIFO preserves ordering (FIFO behavior)
 
+Checks:
 
+* Write known sequence
+* Read back sequence
+* Compare against scoreboard
 
-- Directed tests: Basic write/read sequence, verifying correct FIFO ordering.
+Result:
 
+✅ PASS
 
+---
 
-- Boundary tests: Filling the FIFO completely (checking full asserts correctly), draining it completely (checking empty asserts correctly), and verifying illegal writes/reads are correctly rejected.
+### 2. Full Flag Boundary Test
 
+Objective:
 
+* Verify full flag assertion
 
-- Fault injection: Deliberately introduced a bug into the full flag logic (removed the pointer "lap bit" check) to confirm the testbench actually detects real failures, not just passing by default.
+Checks:
 
+* Fill FIFO completely
+* Confirm full flag activates at correct occupancy
 
+Result:
 
-## Bug Story: Fault Injection Results
+✅ PASS
 
+---
 
+### 3. Empty Flag Boundary Test
 
-To validate that the testbench genuinely catches errors, the full flag logic was intentionally broken:
+Objective:
 
+* Verify empty flag assertion
 
+Checks:
 
+* Drain FIFO completely
+* Confirm empty flag activates correctly
+
+Result:
+
+✅ PASS
+
+---
+
+### 4. Illegal Write Protection
+
+Objective:
+
+* Verify writes are blocked when FIFO is full
+
+Checks:
+
+* Attempt additional write after FIFO reaches full state
+
+Expected Behavior:
+
+* Data ignored
+* FIFO contents remain unchanged
+
+Result:
+
+✅ PASS
+
+---
+
+### 5. Illegal Read Protection
+
+Objective:
+
+* Verify reads are blocked when FIFO is empty
+
+Checks:
+
+* Attempt read after FIFO becomes empty
+
+Expected Behavior:
+
+* No invalid data access
+
+Result:
+
+✅ PASS
+
+---
+
+## Fault Injection Validation
+
+A critical part of verification is proving that the testbench can actually detect bugs.
+
+To validate the verification environment, a deliberate defect was introduced into the full-flag logic:
+
+### Injected Bug
+
+```verilog
 assign full = (wr_addr == rd_addr);
+```
 
+### Problem Created
 
+Immediately after reset:
 
-Result: This caused full to incorrectly assert immediately after reset (since wr_ptr == rd_ptr == 0), which silently blocked every write from the very first cycle. The testbench caught this immediately — not through a full flag mismatch, but through cascading data mismatches (every read returned 00 instead of expected values), since no data was ever actually stored.
+```verilog
+wr_ptr = 0
+rd_ptr = 0
+```
 
+Therefore:
 
+```verilog
+full = 1
+```
 
-PASS = 5 FAIL = 11
+The FIFO incorrectly believed it was full from the first cycle.
 
+As a result:
 
+* All writes were blocked
+* No data entered the FIFO
+* Subsequent reads returned invalid data
 
-After reverting the fix:
+### Verification Results
 
+| Metric | Value |
+| ------ | ----- |
+| PASS   | 5     |
+| FAIL   | 11    |
 
+The scoreboard immediately detected data mismatches:
 
-PASS = 16 FAIL = 0
+```text
+Expected = AA
+Received = 00
+```
 
+This demonstrated that the verification environment successfully catches real design failures.
 
+---
 
-This confirmed the testbench reliably detects real design faults, including subtle ones where the symptom (data mismatch) appears in a different check than the root cause (flag logic).
+### Corrected Design Results
 
+After restoring the correct full-detection logic:
 
+| Metric | Value |
+| ------ | ----- |
+| PASS   | 16    |
+| FAIL   | 0     |
 
-## How to Run
+Result:
 
+✅ All verification tests passed successfully.
 
+---
 
-1. Open Vivado, create a new project
+## Simulation Flow
 
+### Using Vivado
 
-
-2. Add sync_fifo.v as a Design Source
-
-
-
-3. Add fifo_tb.v as a Simulation Source
-
-
-
+1. Create a new Vivado project
+2. Add `sync_fifo.v` as Design Source
+3. Add `fifo_tb.v` as Simulation Source
 4. Run Behavioral Simulation
+5. Observe:
 
+   * Tcl Console pass/fail summary
+   * Waveform viewer
+   * Scoreboard output
 
-
-5. View results in the Tcl Console (PASS/FAIL summary) and waveform viewer
-
-
+---
 
 ## Results Summary
 
+| Test Case                 | Status         |
+| ------------------------- | -------------- |
+| FIFO Ordering             | ✅ Pass         |
+| Full Flag Verification    | ✅ Pass         |
+| Empty Flag Verification   | ✅ Pass         |
+| Illegal Write Handling    | ✅ Pass         |
+| Illegal Read Handling     | ✅ Pass         |
+| Scoreboard Verification   | ✅ Pass         |
+| Fault Injection Detection | ✅ Confirmed    |
+| Overall Verification      | ✅ 16 / 16 PASS |
 
+---
 
-| Test Category | Result |
+## Project Structure
 
+```text
+Synchronous_FIFO/
+│
+├── sync_fifo.v        # FIFO RTL Design
+├── fifo_tb.v          # Self-checking Testbench
+├── waveform.png       # Simulation Waveform (optional)
+├── results.png        # PASS/FAIL Results (optional)
+└── README.md
+```
 
+---
 
-|---|---|
+## Key Learning Outcomes
 
+* RTL design using Verilog HDL
+* FIFO architecture and pointer management
+* Full/Empty flag generation techniques
+* Self-checking verification methodologies
+* Scoreboard-based functional verification
+* Boundary-condition testing
+* Fault injection and debug analysis
+* Simulation using Xilinx Vivado XSIM
 
+---
 
-| Basic write/read order | Pass |
+## Future Enhancements
 
+* Constrained-random verification
+* Functional coverage collection
+* Assertion-based verification (SVA)
+* SystemVerilog testbench migration
+* UVM-based verification environment
+* Dual-clock asynchronous FIFO implementation
 
+---
 
-| Full flag boundary | Pass |
+## Tools & Technologies
 
+* Verilog HDL
+* Xilinx Vivado 2024.1
+* XSIM Simulator
+* Digital Logic Design
+* RTL Design & Verification
 
+---
 
-| Empty flag boundary | Pass |
+## Author
 
+**Dharshini Periyasamy**
 
+Electronics and Communication Engineering (ECE)
 
-| Illegal write (while full) | Pass |
+Interested in:
 
-
-
-| Illegal read (while empty) | Pass |
-
-
-
-| Fault injection detection | Confirmed |
-
-
-
-| Total | 16/16 PASS |
-
-
-
-## Future Improvements
-
-
-
-- Constrained-random stimulus testing
-
-
-
-- Functional coverage tracking
-
-
-
-- SystemVerilog/UVM-based testbench version
-
-
-
-- Asynchronous (dual-clock) FIFO variant
-
-
-
-## Tools Used
-
-
-
-- Xilinx Vivado 2024.1 (XSIM simulator)
-
-
-
-- Verilog HDL
+* VLSI Design
+* FPGA Development
+* Digital IC Verification
+* ASIC Front-End Design
